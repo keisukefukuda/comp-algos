@@ -19,8 +19,8 @@ def main(algo: str, in_file: str):
 
     comp: Compresssor = algo_cls()
 
-    encoded = comp.encode(data)
-    decoded = comp.decode(encoded)
+    encoded: str = comp.encode(data)
+    decoded: bytes = comp.decode(encoded)
 
     print("\nDecoding process:")
 
@@ -35,7 +35,7 @@ def main(algo: str, in_file: str):
             print(f"Compression rate: {orig_bites / enc_bits:.2f}x")
     else:
         raise RuntimeError(
-            f"Decoded data does not match original!: '{data}' vs. '{decoded}'"
+            f"Decoded data does not match original!: '{data!r}' vs. '{decoded}'"
         )
 
 

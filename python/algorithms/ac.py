@@ -1,15 +1,9 @@
 import math
 from fractions import Fraction
-from typing import TypeAlias
 
 import tqdm  # noqa
 
-from algorithms.abc import Compresssor
-
-
-# Type alias for Probability Mass Function table
-PMFType: TypeAlias = list[Fraction]
-CDFType: TypeAlias = list[Fraction]
+from algorithms.abc import Compresssor, PMFType, CDFType
 
 
 def find_range_minimum_bits(L: Fraction, U: Fraction) -> str:
@@ -23,7 +17,9 @@ def find_range_minimum_bits(L: Fraction, U: Fraction) -> str:
             k += 1
 
 
-def find_range_index(CDF: CDFType, L: Fraction, U: Fraction) -> int | None:
+def find_range_index(
+    CDF: list[Fraction] | list[float], L: Fraction, U: Fraction
+) -> int | None:
     # Find L:
     for j in range(len(CDF)):
         range_L = CDF[j - 1] if j > 0 else Fraction(0, 1)
@@ -37,30 +33,44 @@ def find_range_index(CDF: CDFType, L: Fraction, U: Fraction) -> int | None:
 
 
 class AC1(Compresssor):
-    pmf: PMFType  # Probability Mass Function table
-    cdf: CDFType  # Cumulative Distribution Function table
-    A: list[int]  # Alphabet
-    M: int  # Total frequency
+    _pmf: PMFType  # Probability Mass Function table
+    _cdf: CDFType  # Cumulative Distribution Function table
+    _A: list[int]  # Alphabet
+    _M: int  # Total frequency
+
+    @property
+    def A(self) -> list[int]:
+        return self._A
+
+    @property
+    def PMF(self) -> PMFType:
+        return self._pmf
+
+    @property
+    def CDF(self) -> CDFType:
+        return self._cdf
+
+    @property
+    def M(self) -> int:
+        return self._M
 
     def encode(self, data: bytes) -> str:
         assert type(data) is bytes
-        self.A: list[int] = sorted(list(set(data)))
-        self.freq = [data.count(a) for a in self.A]
-        self.M = sum(self.freq)
-        Index = {a: i for i, a in enumerate(self.A)}
-        self.PMF = [Fraction(f, self.M) for f in self.freq]
-        self.CDF: CDFType = [
-            Fraction(sum(self.PMF[: i + 1])) for i in range(len(self.A))
-        ]
+        self._A = sorted(list(set(data)))
+        self._pmf: PMFType = [data.count(a) for a in self._A]
+        self._M = sum(self._pmf)
+        Index = {a: i for i, a in enumerate(self._A)}
+        self._cdf: CDFType = [sum(self._pmf[: i + 1], 0) for i in range(len(self._A))]
+        self._cdf_f = [Fraction(v, self.M) for v in self._cdf]
 
         if len(self.A) == 0:
             return ""
 
         print("Alphabet:", self.A)
-        print("Total Frequency (M):", M)
+        print("Total Frequency (M):", self.M)
         print("Index Mapping:", Index)
-        print("PMF:", [float(v) for v in PMF])
-        print("CDF:", [float(v) for v in self.CDF])
+        print("PMF:", [float(v) / self.M for v in self.PMF])
+        print("CDF:", [float(v) / self.M for v in self.CDF])
 
         encoded = ""  # List to store the encoded bits
 
@@ -68,8 +78,8 @@ class AC1(Compresssor):
 
         for s in tqdm.tqdm(data, desc="Encoding"):
             i = Index[s]
-            L = Fraction(0, 1) if i == 0 else self.CDF[i - 1]
-            U = self.CDF[i]
+            L = Fraction(0, 1) if i == 0 else Fraction(self.CDF[i - 1], self.M)
+            U = Fraction(self.CDF[i], self.M)
             bits = find_range_minimum_bits(L, U)
             # print(f"Symbol: {s}, Interval: [{L}, {U}), Encoded bits: {bits}")
             encoded += bits
@@ -84,7 +94,7 @@ class AC1(Compresssor):
         if encoded == "":
             return bytearray()
 
-        pbar = tqdm.tqdm(total=len(encoded), desc="Decoding")
+        pbar: tqdm.tqdm = tqdm.tqdm(total=len(encoded), desc="Decoding")
 
         nbits = 0
         L = Fraction(0, 1)
@@ -96,7 +106,7 @@ class AC1(Compresssor):
             U = L + Fraction(1, 2**nbits)
             # print(f"Looking for range: {i=} read bits = {nbits}, {s=} {L=}, {U=}")  # noqa
 
-            if (j := find_range_index(self.CDF, L, U)) is not None:
+            if (j := find_range_index(self._cdf_f, L, U)) is not None:
                 decoded.append(self.A[j])
                 # print(f"Bits = {encoded[i-nbits+1:i+1]}")
                 # print(f"Decoded symbol: {A[j]}, Interval: [{L}, {U}), Bits used: {nbits}")  # noqa
