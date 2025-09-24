@@ -33,11 +33,11 @@ class RANS(Compresssor):  # rANS
 
     def __init__(self) -> None:
         self.k: int = 4  # Renormalization granularity (bits)
-        self.L: int = 2**4  # Upper bound of the state X
         self.b: int = 1 << self.k  # emit base (emit b bits in each renorm)
+        self.L: int = self.b ** 1  # Upper bound of the state X
         self.bL: int = self.b * self.L
         self.do_norm = True
-        assert self.L >= self.b
+        assert self.L >= self.b and self.L % self.b == 0
 
     @property
     def A(self) -> list[int]:
@@ -60,6 +60,8 @@ class RANS(Compresssor):  # rANS
         if len(data) == 0:
             return ""
 
+        self.encode_state_history = []
+
         self._A = sorted(list(set(data)))
         self._F = [data.count(a) for a in self.A]
         self._M: int = sum(self._F, 0)
@@ -71,6 +73,8 @@ class RANS(Compresssor):  # rANS
             self._C.append(cum)
             cum += f
         # self._C: CDFType = [sum(self._F[: i+1]) for i in range(len(self.A))]
+        assert self._C == [sum(self._F[: i]) for i in range(len(self.A))]
+        assert self.M <= self.b
 
         print("Alphabet:", self.A)
         print("Total Frequency M=", self.M)
@@ -89,7 +93,8 @@ class RANS(Compresssor):  # rANS
 
         encoded = ""
 
-        for step, s in tqdm.tqdm(enumerate(data), desc="Encoding"):
+        for step_, s in tqdm.tqdm(enumerate(data), desc="Encoding"):
+            step = step_ + 1
             print("\nEncoding step:", step)
             idx = self.A.index(s)
             Fs = self._F[idx]
@@ -106,6 +111,7 @@ class RANS(Compresssor):  # rANS
                     print(
                         f"  Renormalize: (∵ x={x_prev} >= {Fs * self.L=}）: emit {bits} str={bits_str}, new x={pr(x)}"
                     )
+                    self.encode_state_history.append(f"Renorm {x_prev} -> {x}")
 
             assert 0 <= x <= self.M * self.L - 1
 
@@ -123,14 +129,22 @@ class RANS(Compresssor):  # rANS
             print(
                 f"   x = {x}  : x = {block_id * self.M=} + {slot=} = {block_id * self.M + slot}"
             )
+            print(f"Encode X_{step} = {x}")
+            self.encode_state_history.append(f"\"{ch(s)}\" {x_prev} -> {x}")
 
         print(f"Final state x={pr(x)}")
         encoded = "_".join([str(len(data)), str(x), encoded])
         print(f"Encoded : {encoded}")
+
+        print("\nEncoding state history:")
+        for history in self.encode_state_history:
+            print(history)
         return encoded
 
     def decode(self, encoded: str) -> bytes:
         decoded = bytearray()
+
+        self.decode_state_history = []
 
         l_str, x_str, body_str = encoded.split("_")
         length: int = int(l_str)
@@ -143,14 +157,16 @@ class RANS(Compresssor):  # rANS
 
         print("Decoding: initial state x=", pr(x))
 
-        for step in tqdm.tqdm(range(length), desc="Decoding"):
+        for step_ in tqdm.tqdm(range(length), desc="Decoding"):
+            step = step_ + 1
             print("\nDecoding step:", step)
             x_prev = x  # noqa
             r, q = divmod(x, self.M)
             slot = q
             # slot = x % self.M  # initial slot value
-            print(f"  X={pr(x)} {slot=}")
+            # print(f"  X={pr(x)} {slot=}")
 
+            print(f"Decode X_{step} = {x}")
             # s = C_inv(slot)
             pop_i, Cs, Fs = self.pop_s(slot)
             s = self.A[pop_i]
@@ -158,16 +174,23 @@ class RANS(Compresssor):  # rANS
             # x = (x // self.M) * Fs + slot - Cs
             x = r * Fs + slot - Cs
             print(f"  x : {pr(x_prev)} -> {pr(x)} POP {ch(s)}")
+            self.decode_state_history.append(f"\"{ch(s)}\" {x} <- {x_prev}")
 
             # renormalization
             if self.do_norm:
-                while x < min(self.L, self.M):
+                while x < self.L:
                     print(f"  Renormalize: {x=} < L={self.L}")
+                    x_prev = x
                     bits_str = body_str[-self.k :]
                     bits = int(bits_str, 2)
                     body_str = body_str[: -self.k]
                     x = (x << self.k) | bits
                     print(f"  Renormalize: read {bits_str} = {bits}, new x={pr(x)}")
+                    self.decode_state_history.append(f"Renorm {x} <- {x_prev}")
+
+        print("\nDecoding state history:")
+        for history in reversed(self.decode_state_history):
+            print(history)
 
         return bytes(decoded[::-1])  # Reverse the decoded data
 
