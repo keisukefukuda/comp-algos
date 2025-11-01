@@ -37,7 +37,9 @@ def main(algo: str, in_file: str):
         print("Error: decoded data does not match original!")
         print(f"Original data: {len(data)} {data[:20]!r}...")
         print(f"Decoded data:  {len(decoded)} {decoded[:20]!r}...")
-        raise RuntimeError(f"Decoded data does not match original! {data!r} != {decoded!r}")
+        raise RuntimeError(
+            f"Decoded data does not match original! {data!r} != {decoded!r}"
+        )
 
 
 if __name__ == "__main__":

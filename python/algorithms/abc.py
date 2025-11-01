@@ -15,8 +15,3 @@ class Compresssor(ABC):
     @abstractmethod
     def decode(self, encoded: str) -> bytes:
         pass
-
-    @property
-    @abstractmethod
-    def A(self) -> list[int]:
-        pass
