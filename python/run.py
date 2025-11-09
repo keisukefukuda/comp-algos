@@ -3,8 +3,9 @@ import fire  # noqa
 from algorithms.abc import Compresssor
 from algorithms.ac import AC1
 from algorithms.rans import RANS
+from algorithms.rans_lane import MultiLaneRANS
 
-Algorithms = {"ac1": AC1, "rans": RANS}
+Algorithms = {"ac1": AC1, "rans": RANS, "multi_lane_rans": MultiLaneRANS}
 
 
 def main(algo: str, in_file: str):
@@ -26,7 +27,6 @@ def main(algo: str, in_file: str):
 
     if data == decoded:
         print("Data successfully encoded and decoded!")
-        print("Alphabet size:", len(comp.A))
         print("Data length: ", len(data), "symbols")
         print(f"Encoded length: {len(encoded)} bits = {len(encoded) / 8:.2f} bytes")  # noqa
         if len(data) > 0:

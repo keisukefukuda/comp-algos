@@ -32,7 +32,7 @@ def argmax(lst: list[int]) -> int:
     return max_i
 
 
-class RANS(Compresssor):  # rANS
+class MultiLaneRANS(Compresssor):  # rANS
     A: list[int]  # Alphabet
     F: PMFType  # Frequency table
     C: CDFType  # Cumulative frequency table
@@ -190,7 +190,7 @@ class RANS(Compresssor):  # rANS
         def read_from_stream() -> int:
             nonlocal body_str
             # print(f"  Renormalize: {x=} < L={self.L}")
-            bits_str = body_str[-self.k :]
+            bits_str = body_str[-self.k:]
             bits = int(bits_str, 2)
             body_str = body_str[: -self.k]
             # print(f"  Renormalize: read {bits_str} = {bits}, new x={pr(x)}")
