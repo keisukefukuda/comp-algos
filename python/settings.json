@@ -1,0 +1,5 @@
+{
+    "ruff.lint.args": ["--select", "ALL"],
+    "ruff.lint.run": "onSave",
+    "ruff.fixOnSave": true
+}

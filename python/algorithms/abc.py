@@ -9,9 +9,9 @@ CDFType: TypeAlias = list[int]
 
 class Compresssor(ABC):
     @abstractmethod
-    def encode(self, data: bytes) -> str:
+    def encode(self, data: bytes) -> dict:
         pass
 
     @abstractmethod
-    def decode(self, encoded: str) -> bytes:
+    def decode(self, encoded: dict) -> bytes:
         pass

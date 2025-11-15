@@ -1,3 +1,5 @@
+from typing import Any
+
 import tqdm  # noqa
 
 from algorithms.abc import Compresssor, PMFType, CDFType
@@ -45,13 +47,14 @@ class MultiLaneRANS(Compresssor):  # rANS
         self.L: int = 2**23  # = 8,388,608 Lower bound of the state X
         self.bL: int = self.b * self.L
         self.M = 4096  # 2^12
+        self.num_lanes = 32
         assert self.L > self.M and self.L % self.M == 0
         assert self.L >= self.b and self.L % self.b == 0
 
-    def encode(self, data: bytes) -> str:
+    def encode(self, data: bytes) -> dict[str, Any]:
         assert type(data) is bytes
         if len(data) == 0:
-            return ""
+            return {"data": "", "meta": {}}
 
         self.A = sorted(list(set(data)))
         assert len(self.A) <= self.M, (
@@ -161,7 +164,7 @@ class MultiLaneRANS(Compresssor):  # rANS
             x = C(s, x)
 
         # print(f"Final state x={pr(x)}")
-        encoded = "_".join([str(len(data)), str(x), encoded])
+        encoded = "_".join(["multi_lane", str(len(data)), str(x), encoded])
         # print(f"Encoded : {encoded}")
 
         return encoded
@@ -169,7 +172,8 @@ class MultiLaneRANS(Compresssor):  # rANS
     def decode(self, encoded: str) -> bytes:
         decoded = bytearray()
 
-        l_str, x_str, body_str = encoded.split("_")
+        algo_name, l_str, x_str, body_str = encoded.split("_")
+        assert algo_name == "multi_lane", f"Invalid encoding algo: {algo_name}"
         length: int = int(l_str)
         x = int(x_str)
 
@@ -190,7 +194,7 @@ class MultiLaneRANS(Compresssor):  # rANS
         def read_from_stream() -> int:
             nonlocal body_str
             # print(f"  Renormalize: {x=} < L={self.L}")
-            bits_str = body_str[-self.k:]
+            bits_str = body_str[-self.k :]
             bits = int(bits_str, 2)
             body_str = body_str[: -self.k]
             # print(f"  Renormalize: read {bits_str} = {bits}, new x={pr(x)}")
