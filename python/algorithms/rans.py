@@ -50,7 +50,7 @@ class RANS(Compresssor):  # rANS
     def encode(self, data: bytes) -> dict[str, Any]:
         assert type(data) is bytes
         if len(data) == 0:
-            return {"data": "", "meta": {}}
+            return {"data": "", "meta": {"length": 0}}
 
         k: int = 8
         b: int = 1 << k
@@ -187,13 +187,14 @@ class RANS(Compresssor):  # rANS
         decoded = bytearray()
 
         meta = encoded["meta"]
+
         length: int = meta["length"]
+        if length == 0:
+            return b""
+
         x = meta["state"]
         body_str = encoded["data"]
         A = meta["A"]
-
-        if length == 0:
-            return bytes(decoded[::-1])
 
         k = encoded["meta"]["k"]
 
