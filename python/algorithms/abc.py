@@ -5,6 +5,7 @@ from typing import TypeAlias
 # Type alias for Probability Mass Function table
 PMFType: TypeAlias = list[int]
 CDFType: TypeAlias = list[int]
+AlphabetType: TypeAlias = list[int]
 
 
 class Compresssor(ABC):
