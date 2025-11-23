@@ -2,9 +2,9 @@ from typing import Any
 
 import pytest  # noqa
 
-from algorithms.abc import Compresssor
-from algorithms.ac import AC
-from algorithms.rans import RANS
+from algorithms.abc import Compresssor  # noqa
+from algorithms.ac import AC  # noqa
+from algorithms.rans import RANS  # noqa
 
 
 _comp_algos = [

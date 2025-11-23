@@ -37,27 +37,10 @@ class RANS(Compresssor):  # rANS
     def __init__(self) -> None:
         pass
 
-    def encode(self, data: bytes) -> dict[str, Any]:
-        # Setup hyper parameters
-
-        assert type(data) is bytes
-        if len(data) == 0:
-            return {"data": "", "meta": {"length": 0}}
-
-        k: int = 8
-        b: int = 1 << k
-        L: int = 2**23
-        bL: int = b * L
-        M: int = 4096
-
-        assert L > M and L % M == 0
-        assert L >= b and L % b == 0
-
-        A: AlphabetType = []
-
-        meta = {"k": k, "b": b, "L": L, "bL": "A:: "}
-
-        A = sorted(list(set(data)))
+    def prepare_frequency_table(
+        self, data: bytes, M: int
+    ) -> tuple[AlphabetType, PMFType, CDFType]:
+        A: AlphabetType = sorted(list(set(data)))
         assert len(A) <= M, f"Alphabet size too large: |A|={len(A)} > M={M}"  # noqa
 
         # First version of F
@@ -87,6 +70,28 @@ class RANS(Compresssor):  # rANS
             C.append(cum)
             cum += f
         assert C == [sum(F[:i]) for i in range(len(A))]
+
+        return A, F, C
+
+    def encode(self, data: bytes) -> dict[str, Any]:
+        # Setup hyper parameters
+
+        assert type(data) is bytes
+        if len(data) == 0:
+            return {"data": "", "meta": {"length": 0}}
+
+        k: int = 8
+        b: int = 1 << k
+        L: int = 2**23
+        bL: int = b * L
+        M: int = 4096
+
+        assert L > M and L % M == 0
+        assert L >= b and L % b == 0
+
+        meta: dict[str, Any] = {"k": k, "b": b, "L": L, "bL": bL, "M": M}
+
+        A, F, C = self.prepare_frequency_table(data, M)
 
         print("Alphabet:", A)
         print("Total Frequency M=", M)
