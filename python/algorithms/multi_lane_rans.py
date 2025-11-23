@@ -1,7 +1,8 @@
 import tqdm  # noqa
 from typing import Any
 
-from algorithms.abc import Compresssor, PMFType, CDFType, AlphabetType
+from algorithms.abc import PMFType, CDFType, AlphabetType
+from algorithms.rans import RANS
 
 
 def ch(x: int) -> str:
@@ -33,62 +34,13 @@ def argmax(lst: list[int]) -> int:
     return max_i
 
 
-class RANS(Compresssor):  # rANS
-    F: PMFType  # Frequency table
-    C: CDFType  # Cumulative frequency table
-    M: int  # Total frequency
-    k: int  # Renormalization granularity (bits)
-
-    def __init__(self, num_lanes=32) -> None:
-        self.L: int = 2**23  # = 8,388,608 Lower bound of the state X
-        self.b: int = 256  # emit base (emit b bits in each renorm)
-        self.bL: int = self.b * self.L
-        self.M = 4096  # 2^12
-        self.num_lanes: int = num_lanes
-        assert self.L > self.M and self.L % self.M == 0
-        assert self.L >= self.b and self.L % self.b == 0
-        assert self.num_lanes > 0
-
-    def build_frequency_table(
-        self, data: bytes
-    ) -> tuple[AlphabetType, PMFType, CDFType]:
-        A: AlphabetType = sorted(list(set(data)))
-        assert len(A) <= self.M, f"Alphabet size too large: |A|={len(A)} > M={self.M}"  # noqa
-
-        # First version of F (frequency table)
-        F: PMFType = [data.count(a) for a in A]
-
-        # Adjust F2 to ensure sum(F2) == M
-        M2 = sum(F)
-        F2 = [int(max(1, (f * (self.M / M2)))) for f in F]
-
-        while sum(F2) < self.M:
-            i = argmax([f - f2 for f, f2 in zip(self.F, F2)])
-            F2[i] += 1
-        while sum(F2) > self.M:
-            i = argmax(F2)
-            if F2[i] > 1:
-                F2[i] -= 1
-            else:
-                break  # cannot reduce further
-
-        assert sum(F2) == self.M, (
-            f"Freq table adjustment failed: sum(F)={sum(F2)} != M={self.M}"
-        )  # noqa
-        F = F2
-
-        # Index = {a: i for i, a in enumerate(A)}
-        # self.C: CDFType = [sum(self.F[: i]) for i in range(len(A))]
-        C: CDFType = []
-        cum = 0
-        for f in self.F:
-            C.append(cum)
-            cum += f
-        # self.C: CDFType = [sum(self.F[: i+1]) for i in range(len(A))]
-
-        return A, F, C
+class MultiLaneRANS(RANS):  # multi lane rANS
+    def __init__(self) -> None:
+        super().__init__()
 
     def encode(self, data: bytes) -> dict[str, Any]:
+        # Setup hyper parameters
+
         assert type(data) is bytes
         if len(data) == 0:
             return {"data": "", "meta": {"length": 0}}
@@ -97,44 +49,46 @@ class RANS(Compresssor):  # rANS
         b: int = 1 << k
         L: int = 2**23
         bL: int = b * L
+        M: int = 4096
+        num_lanes: int = 4
+        rem: int = len(data) % num_lanes
 
-        meta = {"k": k, "b": b, "L": L, "bL": "A:: "}
+        assert L > M and L % M == 0
+        assert L >= b and L % b == 0
 
-        A, self.F, self.C = self.build_frequency_table(data)
+        meta: dict[str, Any] = {"k": k, "b": b, "L": L, "bL": bL, "M": M}
+
+        A, F, C = self.prepare_frequency_table(data, M)
 
         print("Alphabet:", A)
-        print("Total Frequency M=", self.M)
-        print("PMF:", [v for v in self.F])
-        # print("PMF / M:", [float(v) / self.M for v in self.F])
-        print("CDF:", [v for v in self.C])
-        # print("CDF / M:", [float(v) / self.M for v in self.CDF])
+        print("Total Frequency M=", M)
+        print("PMF:", [v for v in F])
+        # print("PMF / M:", [float(v) / M for v in F])
+        print("CDF:", [v for v in C])
+        # print("CDF / M:", [float(v) / M for v in C])
         print(f"Renormalization base b={b}, L={L}, bL={bL}")
-
-        assert self.C == [sum(self.F[:i]) for i in range(len(A))]
 
         if len(A) == 0:
             return {"data": "", "meta": {}}
 
-        x: int = L  # Initial state
-
-        idx = A.index(data[0])
+        x: list[int] = [L] * num_lanes  # Initial state
 
         encoded = ""
 
-        def C(s: int, x: int) -> int:
+        def get_C(s: int, x: int) -> int:
             x_prev = x  # noqa
             idx = A.index(s)
-            Fs = self.F[idx]
-            Cs = self.C[idx]
+            Fs = F[idx]
+            Cs = C[idx]
             block_id = x // Fs
             slot = Cs + (x % Fs)
             # print(
             #     f"  Push {s} {ch(s)}: block_id={pr(block_id)} {slot=} {idx=} {Fs=} {Cs=}"  # noqa
             # )  # noqa
-            x = block_id * self.M + slot
+            x = block_id * M + slot
             # print(f"   x : {pr(x_prev)} -> {pr(x)}  PUSH {ch(s)}")
             # print(
-            #     f"   x = {x}  : x = {block_id * self.M=} + {slot=} = {block_id * self.M + slot}"  # noqa
+            #     f"   x = {x}  : x = {block_id * M=} + {slot=} = {block_id * M + slot}"  # noqa
             # )
             # print(f"Encode X_{step} = {x}")
             return x
@@ -145,43 +99,58 @@ class RANS(Compresssor):  # rANS
             encoded += bits_str
             # print(f"  Emit {bits} str={bits_str}")
 
+        lane_id = 0
+        print("Encode Start:")
+        print(f"{x=}")
+
         for step_, s in tqdm.tqdm(enumerate(data), desc="Encoding"):
             step = step_ + 1  # noqa
             # print("\nEncoding step:", step)
 
             # assert x < bL, f"Invalid state: x < bL={bL}, but x={x}"  # noqa
-            assert L <= x < bL, (
-                f"Invalid state: L={self.L} <= x < bL={self.bL}, but x={x}"
+            assert L <= x[lane_id] < bL, (
+                f"Invalid state: L={L} <= x < bL={bL}, but x={x[lane_id]}, {lane_id=}"
             )  # noqa
 
             idx = A.index(s)
-            Fs = self.F[idx]
+            Fs = F[idx]
 
             # renormalization
-            x_max = (b * (self.L // self.M)) * Fs
+            x_max = (b * (L // M)) * Fs
             # print(f"  Before push: x={pr(x)}, Fs={Fs}, x_max={pr(x_max)}")
-            while x >= x_max:
-                # print(f"  Renormalize: {x=} >= {x_max=}")
-                bits = x % b  # noqa
+            print(f"Push {s}")
+            while x[lane_id] >= x_max:
+                print(f"  Renormalize: {x=} >= {x_max=}")
+                bits = x[lane_id] % b  # noqa
                 bits_str = format(bits, "b").zfill(k)  # noqa
 
-                write_to_stream(x % b)
-                x >>= k
+                write_to_stream(x[lane_id] % b)
+                x[lane_id] >>= k
                 # print(
-                #     f"  Renormalize: (∵ x={x_prev} >= {x_max=}）: emit {x % self.b} str={bits_str}, new x={pr(x)}"  # noqa
+                #     f"  Renormalize: (∵ x={x_prev} >= {x_max=}）: emit {x % b} str={bits_str}, new x={pr(x)}"  # noqa
                 # )
 
-            x = C(s, x)
+            x[lane_id] = get_C(s, x[lane_id])
+            print(f"{lane_id=}, {x=}")
+            lane_id = (lane_id + 1) % num_lanes
 
         # print(f"Final state x={pr(x)}")
         # encoded = "_".join([str(len(data)), str(x), encoded])
         # print(f"Encoded : {encoded}")
 
         meta = {
+            "algorithm": "multi_lane_rans",
             "A": A,
             "length": len(data),
             "state": x,  # final state
             "k": k,
+            "L": L,
+            "b": b,
+            "M": M,
+            "F": F,
+            "C": C,
+            "rem": rem,
+            "num_lanes": num_lanes,
         }
 
         ret: dict[str, Any] = {
@@ -191,7 +160,7 @@ class RANS(Compresssor):  # rANS
 
         return ret
 
-    def decode(self, encoded: dict[str, Any]) -> bytes:
+    def decode(self, encoded: dict[str, Any]) -> bytes | bytearray:
         decoded = bytearray()
 
         meta = encoded["meta"]
@@ -200,56 +169,80 @@ class RANS(Compresssor):  # rANS
         if length == 0:
             return b""
 
-        x = meta["state"]
-        body_str = encoded["data"]
-        A = meta["A"]
+        assert meta["algorithm"] == "multi_lane_rans"
 
-        k = encoded["meta"]["k"]
+        x: list[int] = meta["state"]
+        rem: int = meta["rem"]
+        num_lanes: int = meta["num_lanes"]
+        assert len(x) == num_lanes, f"len(state)={len(x)} != num_lanes={num_lanes}"
+        assert length % num_lanes == rem
+        body_str = encoded["data"]
+        A: AlphabetType = meta["A"]
+        k: int = int(meta["k"])
+        L: int = int(meta["L"])
+        b: int = int(meta["b"])
+        M: int = int(meta["M"])
+        F: PMFType = meta["F"]
+        C: CDFType = meta["C"]
 
         assert len(body_str) % k == 0, f"{len(body_str)} % {k} != 0, {body_str=}"
+        # assert type(F) is PMFType, f"{type(F)} != PMFType"
+        # assert type(A) is AlphabetType, f"{type(A)} != AlphabetType"
+        # assert type(C) is CDFType, f"{type(C)} != CDFType"
 
         # print("Decoding: initial state x=", pr(x))
 
         def D(x) -> tuple[int, int]:
-            r, slot = divmod(x, self.M)
-            pop_i, Cs, Fs = self.pop_s(slot, A)
+            r, slot = divmod(x, M)
+            pop_i, Cs, Fs = self.pop_s(slot, A, F, C)
             s = A[pop_i]
             x = r * Fs + slot - Cs
             return s, x
 
         def read_from_stream() -> int:
             nonlocal body_str
-            # print(f"  Renormalize: {x=} < L={self.L}")
+            # print(f"  Renormalize: {x=} < L={L}")
             bits_str = body_str[-k:]
             bits = int(bits_str, 2)
             body_str = body_str[:-k]
             # print(f"  Renormalize: read {bits_str} = {bits}, new x={pr(x)}")
             return bits
 
+        lane_id = rem - 1
+
+        # print("")
+        # print(f"{lane_id=}, {rem=}, {num_lanes=}")
+
+        # print("Decode Start:")
+        # print(f"{x=}")
+
         for step_ in tqdm.tqdm(range(length), desc="Decoding"):
             step = step_ + 1  # noqa
             # print("\nDecoding step:", step)
 
-            assert self.L <= x < self.bL, (
-                f"Invalid state: L={self.L} <= x < {self.bL}, but x={x}"
+            assert L <= x[lane_id] < b * L, (
+                f"Invalid state: L={L} <= x < {b * L}, but x={x[lane_id]}, {lane_id=}"
             )  # noqa
 
-            s, x = D(x)
+            s, x[lane_id] = D(x[lane_id])
+            # print("Pop", s)
             decoded.append(s)
 
-            while x < self.L:
-                x = x * self.b + read_from_stream()
+            while x[lane_id] < L:
+                # print(f"{x[lane_id]=} < {L=}, renormalizing...")
+                x[lane_id] = x[lane_id] * b + read_from_stream()
+            # print(f"{lane_id=}, {x=}")
+            lane_id = (lane_id + num_lanes - 1) % num_lanes
 
-        # print("\nDecoding state history:")
         return bytes(decoded[::-1])  # Reverse the decoded data
 
-    def pop_s(self, slot, A) -> tuple[int, int, int]:
-        for i in range(len(self.F)):
-            Cs = self.C[i]
-            Fs = self.F[i]
-            # U = self.CDF[i + 1] if i + 1 < len(self.CDF) else self.M
+    def pop_s(self, slot, A, F, C) -> tuple[int, int, int]:
+        for i in range(len(F)):
+            Cs = C[i]
+            Fs = F[i]
+            # U = C[i + 1] if i + 1 < len(C) else M
             # print(
-            #     f"  {i=}, {Cs=}, {Fs=} c={self.CDF[i]} s={A[i]} {ch(A[i])}"  # noqa
+            #     f"  {i=}, {Cs=}, {Fs=} c={C[i]} s={A[i]} {ch(A[i])}"  # noqa
             # )
             if Cs <= slot < Cs + Fs:
                 s = A[i]  # noqa

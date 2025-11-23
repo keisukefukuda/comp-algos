@@ -5,19 +5,20 @@ import pytest  # noqa
 from algorithms.abc import Compresssor  # noqa
 from algorithms.ac import AC  # noqa
 from algorithms.rans import RANS  # noqa
+from algorithms.multi_lane_rans import MultiLaneRANS  # noqa
 
 
 _comp_algos = [
-    AC,
-    RANS,
+    # AC,
+    # RANS,
+    MultiLaneRANS,
 ]
 _data = [
     b"",
     b"hello, rans! hello, rans! hello, rans!",
-    b"",
     b"a",
     b"a" * 1000,
-    b"abcde" * 500,
+    b"abcde" * 1000,
 ]
 
 

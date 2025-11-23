@@ -106,8 +106,6 @@ class RANS(Compresssor):  # rANS
 
         x: int = L  # Initial state
 
-        idx = A.index(data[0])
-
         encoded = ""
 
         def get_C(s: int, x: int) -> int:
