@@ -33,7 +33,7 @@ def find_range_index(
     return None
 
 
-class AC1(Compresssor):
+class AC(Compresssor):
     def __init__(self) -> None:
         pass
 

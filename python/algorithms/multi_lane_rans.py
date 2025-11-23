@@ -1,6 +1,5 @@
 import tqdm  # noqa
 from typing import Any
-from typing import TypeAlias
 
 from algorithms.abc import Compresssor, PMFType, CDFType, AlphabetType
 

@@ -3,12 +3,12 @@ from typing import Any
 import pytest  # noqa
 
 from algorithms.abc import Compresssor
-from algorithms.ac import AC1
+from algorithms.ac import AC
 from algorithms.rans import RANS
 
 
 _comp_algos = [
-    AC1,
+    AC,
     RANS,
 ]
 _data = [
