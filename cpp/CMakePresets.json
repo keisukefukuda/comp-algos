@@ -1,0 +1,30 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/debug/generators/conan_toolchain.cmake"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "build/release/generators/conan_toolchain.cmake"
+      }
+    }
+  ]
+}
