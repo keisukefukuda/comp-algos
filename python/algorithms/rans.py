@@ -1,7 +1,27 @@
 import tqdm  # noqa
-from typing import Any
+from typing import NamedTuple
 
 from algorithms.abc import Compresssor, PMFType, CDFType, AlphabetType
+
+
+class RANSMeta(NamedTuple):
+    A: AlphabetType
+    length: int
+    state: int
+    k: int
+    L: int
+    b: int
+    M: int
+    F: PMFType
+    C: CDFType
+
+
+class RANSEncoded(NamedTuple):
+    data: str
+    meta: RANSMeta
+
+
+_EMPTY_META = RANSMeta(A=[], length=0, state=0, k=0, L=0, b=0, M=0, F=[], C=[])
 
 
 def ch(x: int) -> str:
@@ -73,12 +93,12 @@ class RANS(Compresssor):  # rANS
 
         return A, F, C
 
-    def encode(self, data: bytes) -> dict[str, Any]:
+    def encode(self, data: bytes) -> RANSEncoded:
         # Setup hyper parameters
 
         assert type(data) is bytes
         if len(data) == 0:
-            return {"data": "", "meta": {"length": 0}}
+            return RANSEncoded(data="", meta=_EMPTY_META)
 
         k: int = 8
         b: int = 1 << k
@@ -88,8 +108,6 @@ class RANS(Compresssor):  # rANS
 
         assert L > M and L % M == 0
         assert L >= b and L % b == 0
-
-        meta: dict[str, Any] = {"k": k, "b": b, "L": L, "bL": bL, "M": M}
 
         A, F, C = self.prepare_frequency_table(data, M)
 
@@ -102,7 +120,7 @@ class RANS(Compresssor):  # rANS
         print(f"Renormalization base b={b}, L={L}, bL={bL}")
 
         if len(A) == 0:
-            return {"data": "", "meta": {}}
+            return RANSEncoded(data="", meta=_EMPTY_META)
 
         x: int = L  # Initial state
 
@@ -162,43 +180,39 @@ class RANS(Compresssor):  # rANS
         # encoded = "_".join([str(len(data)), str(x), encoded])
         # print(f"Encoded : {encoded}")
 
-        meta = {
-            "A": A,
-            "length": len(data),
-            "state": x,  # final state
-            "k": k,
-            "L": L,
-            "b": b,
-            "M": M,
-            "F": F,
-            "C": C,
-        }
+        return RANSEncoded(
+            data=encoded,
+            meta=RANSMeta(
+                A=A,
+                length=len(data),
+                state=x,
+                k=k,
+                L=L,
+                b=b,
+                M=M,
+                F=F,
+                C=C,
+            ),
+        )
 
-        ret: dict[str, Any] = {
-            "data": encoded,
-            "meta": meta,
-        }
-
-        return ret
-
-    def decode(self, encoded: dict[str, Any]) -> bytes | bytearray:
+    def decode(self, encoded: RANSEncoded) -> bytes | bytearray:
         decoded = bytearray()
 
-        meta = encoded["meta"]
+        meta = encoded.meta
 
-        length: int = meta["length"]
+        length: int = meta.length
         if length == 0:
             return b""
 
-        x = meta["state"]
-        body_str = encoded["data"]
-        A: AlphabetType = meta["A"]
-        k: int = int(meta["k"])
-        L: int = int(meta["L"])
-        b: int = int(meta["b"])
-        M: int = int(meta["M"])
-        F: PMFType = meta["F"]
-        C: CDFType = meta["C"]
+        x = meta.state
+        body_str = encoded.data
+        A: AlphabetType = meta.A
+        k: int = meta.k
+        L: int = meta.L
+        b: int = meta.b
+        M: int = meta.M
+        F: PMFType = meta.F
+        C: CDFType = meta.C
 
         assert len(body_str) % k == 0, f"{len(body_str)} % {k} != 0, {body_str=}"
         # assert type(F) is PMFType, f"{type(F)} != PMFType"
