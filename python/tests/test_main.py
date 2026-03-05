@@ -38,3 +38,50 @@ def test_main(algorithm_class: type[Compresssor], data: bytes):
     decoded: bytes = algorithm_class().decode(encoded)
     assert type(decoded) is bytearray or type(decoded) is bytes
     assert data == decoded
+
+
+def test_encode_with_external_freq_table():
+    """正しい freq_table を渡した場合にラウンドトリップが成功する"""
+    data = b"abcde" * 100
+    rans = RANS()
+    freq_table = rans.build_frequency_table(data, M=4096)
+    encoded = rans.encode(data, freq_table=freq_table)
+    assert type(encoded) is RANSEncoded
+    decoded = rans.decode(encoded)
+    assert decoded == data
+
+
+def test_encode_with_inaccurate_freq_table():
+    """実際の分布と異なる頻度テーブルでもエンコード・デコードが成功する"""
+    data = b"abcde" * 100
+    rans = RANS()
+    # a〜e が均一分布のデータに対して、意図的に偏った頻度を指定
+    A = sorted(set(data))            # [97, 98, 99, 100, 101]
+    F = [4090, 1, 1, 1, 3]          # 実際の分布と異なる頻度
+    C = [0, 4090, 4091, 4092, 4093]
+    encoded = rans.encode(data, freq_table=(A, F, C))
+    assert type(encoded) is RANSEncoded
+    decoded = rans.decode(encoded)
+    assert decoded == data
+
+
+def test_encode_with_freq_table_missing_symbol():
+    """data に含まれるシンボルが freq_table の A にない場合 AssertionError"""
+    data = b"abcz"
+    rans = RANS()
+    A = [97, 98, 99]        # z (122) が含まれない
+    F = [1000, 1000, 2096]
+    C = [0, 1000, 2000]
+    with pytest.raises(AssertionError):
+        rans.encode(data, freq_table=(A, F, C))
+
+
+def test_encode_with_freq_table_length_mismatch():
+    """A, F, C の長さが不一致の場合 AssertionError"""
+    data = b"abc"
+    rans = RANS()
+    A = [97, 98, 99]   # 長さ3
+    F = [2000, 2096]   # 長さ2 (不一致)
+    C = [0, 2000]      # 長さ2 (不一致)
+    with pytest.raises(AssertionError):
+        rans.encode(data, freq_table=(A, F, C))
