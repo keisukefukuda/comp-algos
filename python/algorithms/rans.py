@@ -99,7 +99,7 @@ class RANS(Compresssor):  # rANS
         k: int = 8,
         L: int = 2**23,
         M: int = 4096,
-        freq_table: tuple[AlphabetType, PMFType, CDFType] | None = None,
+        freq_table: tuple[AlphabetType, PMFType] | None = None,
     ) -> RANSEncoded:
         # Setup hyper parameters
 
@@ -116,14 +116,19 @@ class RANS(Compresssor):  # rANS
         if freq_table is None:
             A, F, C = self.build_frequency_table(data, M)
         else:
-            A, F, C = freq_table
-            assert len(A) == len(F) == len(C), (
-                f"freq_table length mismatch: len(A)={len(A)}, len(F)={len(F)}, len(C)={len(C)}"
+            A, F = freq_table
+            assert len(A) == len(F), (
+                f"freq_table length mismatch: len(A)={len(A)}, len(F)={len(F)}"
             )
             missing = set(data) - set(A)
             assert not missing, (
                 f"freq_table is missing symbols found in data: {sorted(missing)}"
             )
+            C: CDFType = []
+            cum = 0
+            for f in F:
+                C.append(cum)
+                cum += f
 
         print("Alphabet:", A)
         print("Total Frequency M=", M)
