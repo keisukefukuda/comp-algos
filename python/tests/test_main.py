@@ -1,17 +1,13 @@
-from typing import Any
-
 import pytest  # noqa
 
 from algorithms.abc import Compresssor  # noqa
 from algorithms.ac import AC  # noqa
-from algorithms.rans import RANS  # noqa
-from algorithms.multi_lane_rans import MultiLaneRANS  # noqa
+from algorithms.rans import RANS, RANSEncoded  # noqa
 
 
 _comp_algos = [
-    # AC,
-    # RANS,
-    MultiLaneRANS,
+    AC,
+    RANS,
 ]
 _data = [
     b"",
@@ -27,12 +23,17 @@ _data = [
 @pytest.mark.parametrize("data", _data)
 def test_main(algorithm_class: type[Compresssor], data: bytes):
     assert type(data) is bytes
-    encoded: dict[str, Any] = algorithm_class().encode(data)
+    encoded = algorithm_class().encode(data)
 
-    assert type(encoded) is dict
-    assert "data" in encoded, "has 'data' key"
-    assert type(encoded["data"]) is str, "data is str"
-    assert "meta" in encoded, "has 'meta' key"
+    if algorithm_class is RANS:
+        assert type(encoded) is RANSEncoded
+        assert type(encoded.data) is str, "data is str"
+        assert encoded.meta is not None, "has 'meta'"
+    else:
+        assert type(encoded) is dict
+        assert "data" in encoded, "has 'data' key"
+        assert type(encoded["data"]) is str, "data is str"
+        assert "meta" in encoded, "has 'meta' key"
 
     decoded: bytes = algorithm_class().decode(encoded)
     assert type(decoded) is bytearray or type(decoded) is bytes
