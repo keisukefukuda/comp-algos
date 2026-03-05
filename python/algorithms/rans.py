@@ -117,6 +117,13 @@ class RANS(Compresssor):  # rANS
             A, F, C = self.build_frequency_table(data, M)
         else:
             A, F, C = freq_table
+            assert len(A) == len(F) == len(C), (
+                f"freq_table length mismatch: len(A)={len(A)}, len(F)={len(F)}, len(C)={len(C)}"
+            )
+            missing = set(data) - set(A)
+            assert not missing, (
+                f"freq_table is missing symbols found in data: {sorted(missing)}"
+            )
 
         print("Alphabet:", A)
         print("Total Frequency M=", M)
