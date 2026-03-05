@@ -57,7 +57,7 @@ class RANS(Compresssor):  # rANS
     def __init__(self) -> None:
         pass
 
-    def prepare_frequency_table(
+    def build_frequency_table(
         self, data: bytes, M: int
     ) -> tuple[AlphabetType, PMFType, CDFType]:
         A: AlphabetType = sorted(list(set(data)))
@@ -93,23 +93,30 @@ class RANS(Compresssor):  # rANS
 
         return A, F, C
 
-    def encode(self, data: bytes) -> RANSEncoded:
+    def encode(
+        self,
+        data: bytes,
+        k: int = 8,
+        L: int = 2**23,
+        M: int = 4096,
+        freq_table: tuple[AlphabetType, PMFType, CDFType] | None = None,
+    ) -> RANSEncoded:
         # Setup hyper parameters
 
         assert type(data) is bytes
         if len(data) == 0:
             return RANSEncoded(data="", meta=_EMPTY_META)
 
-        k: int = 8
         b: int = 1 << k
-        L: int = 2**23
         bL: int = b * L
-        M: int = 4096
 
         assert L > M and L % M == 0
         assert L >= b and L % b == 0
 
-        A, F, C = self.prepare_frequency_table(data, M)
+        if freq_table is None:
+            A, F, C = self.build_frequency_table(data, M)
+        else:
+            A, F, C = freq_table
 
         print("Alphabet:", A)
         print("Total Frequency M=", M)
