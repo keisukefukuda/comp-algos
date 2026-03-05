@@ -1,9 +1,9 @@
 # Python Package Management with uv
 
 Use uv exclusively for Python package management in this project.
+uv is possibly installed /opt/homebrew/bin/uv or /home/user/.local/bin/uv
 
 ## Package Management Commands
-
 - All Python dependencies **must be installed, synchronized, and locked** using uv
 - Never use pip, pip-tools, poetry, or conda directly for dependency management
 
@@ -20,3 +20,6 @@ Use uv exclusively for Python package management in this project.
 - Type Checking: uv run ty check blueprint/
 - Testing: uv run pytest tests/ -v
 - Pre-commit: uv run pre-commit run --all-files
+
+## How to run pytest
+ - In python/ directory, run `env PYTHONPATH=. uv run pytest tests`
