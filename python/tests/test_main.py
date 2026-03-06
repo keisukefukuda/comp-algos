@@ -44,8 +44,8 @@ def test_encode_with_external_freq_table():
     """正しい freq_table を渡した場合にラウンドトリップが成功する"""
     data = b"abcde" * 100
     rans = RANS()
-    A, F, _ = rans.build_frequency_table(data, M=4096)
-    encoded = rans.encode(data, freq_table=(A, F))
+    F, _ = rans.build_frequency_table(data, M=4096)
+    encoded = rans.encode(data, freq_table=F)
     assert type(encoded) is RANSEncoded
     decoded = rans.decode(encoded)
     assert decoded == data
@@ -56,29 +56,28 @@ def test_encode_with_inaccurate_freq_table():
     data = b"abcde" * 100
     rans = RANS()
     # a〜e が均一分布のデータに対して、意図的に偏った頻度を指定
-    A = sorted(set(data))   # [97, 98, 99, 100, 101]
-    F = [4090, 1, 1, 1, 3]  # 実際の分布と異なる頻度
-    encoded = rans.encode(data, freq_table=(A, F))
+    F = [0] * 256
+    F[97], F[98], F[99], F[100], F[101] = 4090, 1, 1, 1, 3  # 実際の分布と異なる頻度
+    encoded = rans.encode(data, freq_table=F)
     assert type(encoded) is RANSEncoded
     decoded = rans.decode(encoded)
     assert decoded == data
 
 
 def test_encode_with_freq_table_missing_symbol():
-    """data に含まれるシンボルが freq_table の A にない場合 AssertionError"""
+    """data に含まれるシンボルの頻度が 0 の場合 AssertionError"""
     data = b"abcz"
     rans = RANS()
-    A = [97, 98, 99]        # z (122) が含まれない
-    F = [1000, 1000, 2096]
+    F = [0] * 256
+    F[97], F[98], F[99] = 1000, 1000, 2096  # z (122) の頻度は 0 のまま
     with pytest.raises(AssertionError):
-        rans.encode(data, freq_table=(A, F))
+        rans.encode(data, freq_table=F)
 
 
 def test_encode_with_freq_table_length_mismatch():
-    """A と F の長さが不一致の場合 AssertionError"""
+    """len(freq_table) と num_symbols が不一致の場合 AssertionError"""
     data = b"abc"
     rans = RANS()
-    A = [97, 98, 99]   # 長さ3
-    F = [2000, 2096]   # 長さ2 (不一致)
+    F = [0] * 100  # num_symbols=256 に対して長さが不一致
     with pytest.raises(AssertionError):
-        rans.encode(data, freq_table=(A, F))
+        rans.encode(data, freq_table=F, num_symbols=256)

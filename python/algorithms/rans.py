@@ -1,19 +1,19 @@
 import tqdm  # noqa
 from typing import NamedTuple
 
-from algorithms.abc import Compresssor, PMFType, CDFType, AlphabetType
+from algorithms.abc import Compresssor, PMFType, CDFType
 
 
 class RANSMeta(NamedTuple):
-    A: AlphabetType  # アルファベット（シンボルのリスト）
-    length: int      # 元データのシンボル数
-    state: int       # エンコード後の最終状態 x
-    k: int           # 1回のリノーマライゼーションで放出/読込するビット数
-    L: int           # 状態 x の下限（x ∈ [L, bL) を不変条件とする）
-    b: int           # 基数 b = 2^k（リノーマライゼーションのステップ幅）
-    M: int           # 周波数テーブルの合計値（精度パラメータ、2の冪が推奨）
-    F: PMFType       # 各シンボルの量子化済み頻度（PMF）、sum(F) == M
-    C: CDFType       # 各シンボルの累積頻度（CDF）、C[i] = sum(F[:i])
+    num_symbols: int  # シンボル値の範囲 (0〜num_symbols-1)、PMF/CDF の長さ
+    length: int       # 元データのシンボル数
+    state: int        # エンコード後の最終状態 x
+    k: int            # 1回のリノーマライゼーションで放出/読込するビット数
+    L: int            # 状態 x の下限（x ∈ [L, bL) を不変条件とする）
+    b: int            # 基数 b = 2^k（リノーマライゼーションのステップ幅）
+    M: int            # 周波数テーブルの合計値（精度パラメータ、2の冪が推奨）
+    F: PMFType        # 各シンボルの量子化済み頻度（PMF）、sum(F) == M
+    C: CDFType        # 各シンボルの累積頻度（CDF）、C[i] = sum(F[:i])
 
 
 class RANSEncoded(NamedTuple):
@@ -21,7 +21,7 @@ class RANSEncoded(NamedTuple):
     meta: RANSMeta
 
 
-_EMPTY_META = RANSMeta(A=[], length=0, state=0, k=0, L=0, b=0, M=0, F=[], C=[])
+_EMPTY_META = RANSMeta(num_symbols=0, length=0, state=0, k=0, L=0, b=0, M=0, F=[], C=[])
 
 
 def ch(x: int) -> str:
@@ -66,19 +66,18 @@ class RANS(Compresssor):  # rANS
         return C
 
     def build_frequency_table(
-        self, data: bytes, M: int
-    ) -> tuple[AlphabetType, PMFType, CDFType]:
-        A: AlphabetType = sorted(list(set(data)))
-        assert len(A) <= M, f"Alphabet size too large: |A|={len(A)} > M={M}"  # noqa
+        self, data: bytes, M: int, num_symbols: int = 256
+    ) -> tuple[PMFType, CDFType]:
+        # F_raw[i] = 実際のバイト値 i の出現回数
+        F_raw: PMFType = [data.count(i) for i in range(num_symbols)]
+        assert sum(F_raw) == len(data)
 
-        # First version of F
-        F: PMFType = [data.count(a) for a in A]
-
-        M2 = sum(F)
-        F2: PMFType = [int(max(1, (f * (M / M2)))) for f in F]
+        # 出現したシンボルのみ量子化（未出現シンボルは 0 のまま維持）
+        M2 = sum(F_raw)
+        F2: PMFType = [int(max(1, (f * (M / M2)))) if f > 0 else 0 for f in F_raw]
         # Adjust F2 to ensure sum(F2) == M
         while sum(F2) < M:
-            i = argmax([f - f2 for f, f2 in zip(F, F2)])
+            i = argmax([f - f2 for f, f2 in zip(F_raw, F2)])
             F2[i] += 1
         while sum(F2) > M:
             i = argmax(F2)
@@ -88,14 +87,9 @@ class RANS(Compresssor):  # rANS
                 break  # cannot reduce further
 
         assert sum(F2) == M, f"Freq table adjustment failed: sum(F)={sum(F2)} != M={M}"  # noqa
-        F = F2
 
-        # Index = {a: i for i, a in enumerate(A)}
-        # C: CDFType = [sum(F[: i]) for i in range(len(A))]
-        C: CDFType = self.build_cdf_from_pmf(F)
-        assert C == [sum(F[:i]) for i in range(len(A))]
-
-        return A, F, C
+        C: CDFType = self.build_cdf_from_pmf(F2)
+        return F2, C
 
     def encode(
         self,
@@ -103,7 +97,8 @@ class RANS(Compresssor):  # rANS
         k: int = 8,
         L: int = 2**23,
         M: int = 4096,
-        freq_table: tuple[AlphabetType, PMFType] | None = None,
+        num_symbols: int = 256,
+        freq_table: PMFType | None = None,
     ) -> RANSEncoded:
         # Setup hyper parameters
 
@@ -118,19 +113,18 @@ class RANS(Compresssor):  # rANS
         assert L >= b and L % b == 0
 
         if freq_table is None:
-            A, F, C = self.build_frequency_table(data, M)
+            F, C = self.build_frequency_table(data, M, num_symbols)
         else:
-            A, F = freq_table
-            assert len(A) == len(F), (
-                f"freq_table length mismatch: len(A)={len(A)}, len(F)={len(F)}"
+            F = freq_table
+            assert len(F) == num_symbols, (
+                f"freq_table length mismatch: len(F)={len(F)}, num_symbols={num_symbols}"
             )
-            missing = set(data) - set(A)
+            missing = {s for s in set(data) if F[s] == 0}
             assert not missing, (
                 f"freq_table is missing symbols found in data: {sorted(missing)}"
             )
             C: CDFType = self.build_cdf_from_pmf(F)
 
-        print("Alphabet:", A)
         print("Total Frequency M=", M)
         print("PMF:", [v for v in F])
         # print("PMF / M:", [float(v) / M for v in F])
@@ -138,28 +132,21 @@ class RANS(Compresssor):  # rANS
         # print("CDF / M:", [float(v) / M for v in C])
         print(f"Renormalization base b={b}, L={L}, bL={bL}")
 
-        if len(A) == 0:
-            return RANSEncoded(data="", meta=_EMPTY_META)
-
         x: int = L  # Initial state
 
         encoded = ""
 
         def get_C(s: int, x: int) -> int:
             x_prev = x  # noqa
-            idx = A.index(s)
-            Fs = F[idx]
-            Cs = C[idx]
+            Fs = F[s]
+            Cs = C[s]
             block_id = x // Fs
             slot = Cs + (x % Fs)
             # print(
-            #     f"  Push {s} {ch(s)}: block_id={pr(block_id)} {slot=} {idx=} {Fs=} {Cs=}"  # noqa
+            #     f"  Push {s} {ch(s)}: block_id={pr(block_id)} {slot=} {Fs=} {Cs=}"  # noqa
             # )  # noqa
             x = block_id * M + slot
             # print(f"   x : {pr(x_prev)} -> {pr(x)}  PUSH {ch(s)}")
-            # print(
-            #     f"   x = {x}  : x = {block_id * M=} + {slot=} = {block_id * M + slot}"  # noqa
-            # )
             # print(f"Encode X_{step} = {x}")
             return x
 
@@ -173,25 +160,19 @@ class RANS(Compresssor):  # rANS
             step = step_ + 1  # noqa
             # print("\nEncoding step:", step)
 
-            # assert x < bL, f"Invalid state: x < bL={bL}, but x={x}"  # noqa
             assert L <= x < bL, f"Invalid state: L={L} <= x < bL={bL}, but x={x}"  # noqa
 
-            idx = A.index(s)
-            Fs = F[idx]
+            Fs = F[s]
 
             # renormalization
             x_max = (b * (L // M)) * Fs
             # print(f"  Before push: x={pr(x)}, Fs={Fs}, x_max={pr(x_max)}")
             while x >= x_max:
-                # print(f"  Renormalize: {x=} >= {x_max=}")
                 bits = x % b  # noqa
                 bits_str = format(bits, "b").zfill(k)  # noqa
 
                 write_to_stream(x % b)
                 x >>= k
-                # print(
-                #     f"  Renormalize: (∵ x={x_prev} >= {x_max=}）: emit {x % b} str={bits_str}, new x={pr(x)}"  # noqa
-                # )
 
             x = get_C(s, x)
 
@@ -202,7 +183,7 @@ class RANS(Compresssor):  # rANS
         return RANSEncoded(
             data=encoded,
             meta=RANSMeta(
-                A=A,
+                num_symbols=num_symbols,
                 length=len(data),
                 state=x,
                 k=k,
@@ -225,7 +206,6 @@ class RANS(Compresssor):  # rANS
 
         x = meta.state
         body_str = encoded.data
-        A: AlphabetType = meta.A
         k: int = meta.k
         L: int = meta.L
         b: int = meta.b
@@ -242,8 +222,8 @@ class RANS(Compresssor):  # rANS
 
         def D(x) -> tuple[int, int]:
             r, slot = divmod(x, M)
-            pop_i, Cs, Fs = self.pop_s(slot, A, F, C)
-            s = A[pop_i]
+            pop_i, Cs, Fs = self.pop_s(slot, F, C)
+            s = pop_i  # シンボル値 = PMF インデックス
             x = r * Fs + slot - Cs
             return s, x
 
@@ -270,18 +250,10 @@ class RANS(Compresssor):  # rANS
         # print("\nDecoding state history:")
         return bytes(decoded[::-1])  # Reverse the decoded data
 
-    def pop_s(self, slot, A, F, C) -> tuple[int, int, int]:
+    def pop_s(self, slot, F, C) -> tuple[int, int, int]:
         for i in range(len(F)):
             Cs = C[i]
             Fs = F[i]
-            # U = C[i + 1] if i + 1 < len(C) else M
-            # print(
-            #     f"  {i=}, {Cs=}, {Fs=} c={C[i]} s={A[i]} {ch(A[i])}"  # noqa
-            # )
             if Cs <= slot < Cs + Fs:
-                s = A[i]  # noqa
-                # print(
-                #     f"  ==> Found slot for symbol! index {i}: {s=} '{ch(s)}' {Cs=} {Fs=} [{Cs}, {Cs + Fs})"  # noqa
-                # )  # noqa
                 return i, Cs, Fs
         raise RuntimeError(f"Decoding failed: slot {slot} not found in CDF")
