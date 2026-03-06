@@ -57,6 +57,14 @@ class RANS(Compresssor):  # rANS
     def __init__(self) -> None:
         pass
 
+    def build_cdf_from_pmf(self, F: PMFType) -> CDFType:
+        C: CDFType = []
+        cum = 0
+        for f in F:
+            C.append(cum)
+            cum += f
+        return C
+
     def build_frequency_table(
         self, data: bytes, M: int
     ) -> tuple[AlphabetType, PMFType, CDFType]:
@@ -84,11 +92,7 @@ class RANS(Compresssor):  # rANS
 
         # Index = {a: i for i, a in enumerate(A)}
         # C: CDFType = [sum(F[: i]) for i in range(len(A))]
-        C: CDFType = []
-        cum = 0
-        for f in F:
-            C.append(cum)
-            cum += f
+        C: CDFType = self.build_cdf_from_pmf(F)
         assert C == [sum(F[:i]) for i in range(len(A))]
 
         return A, F, C
@@ -124,11 +128,7 @@ class RANS(Compresssor):  # rANS
             assert not missing, (
                 f"freq_table is missing symbols found in data: {sorted(missing)}"
             )
-            C: CDFType = []
-            cum = 0
-            for f in F:
-                C.append(cum)
-                cum += f
+            C: CDFType = self.build_cdf_from_pmf(F)
 
         print("Alphabet:", A)
         print("Total Frequency M=", M)
