@@ -5,15 +5,15 @@ from algorithms.abc import Compresssor, PMFType, CDFType, AlphabetType
 
 
 class RANSMeta(NamedTuple):
-    A: AlphabetType
-    length: int
-    state: int
-    k: int
-    L: int
-    b: int
-    M: int
-    F: PMFType
-    C: CDFType
+    A: AlphabetType  # アルファベット（シンボルのリスト）
+    length: int      # 元データのシンボル数
+    state: int       # エンコード後の最終状態 x
+    k: int           # 1回のリノーマライゼーションで放出/読込するビット数
+    L: int           # 状態 x の下限（x ∈ [L, bL) を不変条件とする）
+    b: int           # 基数 b = 2^k（リノーマライゼーションのステップ幅）
+    M: int           # 周波数テーブルの合計値（精度パラメータ、2の冪が推奨）
+    F: PMFType       # 各シンボルの量子化済み頻度（PMF）、sum(F) == M
+    C: CDFType       # 各シンボルの累積頻度（CDF）、C[i] = sum(F[:i])
 
 
 class RANSEncoded(NamedTuple):
