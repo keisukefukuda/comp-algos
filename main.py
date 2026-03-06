@@ -16,30 +16,35 @@ b = 1 << k
 rans = RANS()
 ns = list(range(1, 1025))
 
-# --- 2シンボル版 ---
-F_2 = [1, M - 1]
 
-output_bytes_2 = []
-for n in ns:
-    data = bytes([0] * n)
-    encoded = rans.encode(data, freq_table=F_2, num_symbols=2)
-    output_bytes_2.append(math.ceil(len(encoded.data) / 8))
+def build_pmf(num_symbols: int, M: int) -> list[int]:
+    """シンボル0を稀少（頻度1）、残りを均等に配分したPMFを構築する"""
+    F = [0] * num_symbols
+    F[0] = 1
+    for i in range(1, num_symbols):
+        F[i] = (M - 1) // (num_symbols - 1)
+    while sum(F) < M:
+        F[-1] += 1
+    F[1] += M - sum(F)
+    return F
 
-# --- 64シンボル版 ---
-NUM_SYMBOLS = 64
-F_64 = [0] * NUM_SYMBOLS
-F_64[0] = 1
-for i in range(1, NUM_SYMBOLS):
-    F_64[i] = (M - 1) // (NUM_SYMBOLS - 1)
-while sum(F_64) < M:
-    F_64[-1] += 1
-F_64[1] += M - sum(F_64)
 
-output_bytes_64 = []
-for n in ns:
-    data = bytes([0] * n)
-    encoded = rans.encode(data, freq_table=F_64, num_symbols=NUM_SYMBOLS)
-    output_bytes_64.append(math.ceil(len(encoded.data) / 8))
+def measure_output_bytes(F: list[int], ns: list[int]) -> list[int]:
+    """シンボル0のみからなるデータをエンコードし、各長さの出力バイト数を返す"""
+    num_symbols = len(F)
+    output_bytes = []
+    for n in ns:
+        data = bytes([0] * n)
+        encoded = rans.encode(data, freq_table=F, num_symbols=num_symbols)
+        output_bytes.append(math.ceil(len(encoded.data) / 8))
+    return output_bytes
+
+
+F_2  = build_pmf(2,  M)
+F_64 = build_pmf(64, M)
+
+output_bytes_2  = measure_output_bytes(F_2,  ns)
+output_bytes_64 = measure_output_bytes(F_64, ns)
 
 # 参考曲線: N * ceil(log_b(M))
 log_bM = math.log(M, b)   # ceil(log_256(4096)) = 2
